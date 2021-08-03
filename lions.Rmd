@@ -1,0 +1,206 @@
+---
+title: "Lion_Occupancy"
+author: "Maggie Klope"
+date: "7/27/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+# install.packages("rgbif")
+library(rgbif)
+# library(maps)
+# install.packages("dismo")
+# library(dismo)
+library(maptools)
+library(dismo)
+library(rgeos)
+library(viridis)
+# install.packages("scrubr")
+library(scrubr)
+library(raster)
+
+
+# download lion data (will take a while)
+gbif_lion <- occ_data(scientificName = "Panthera leo", 
+                      hasCoordinate = TRUE, 
+                      continent = "Africa")
+
+```
+
+### Getting coordinates
+```{r}
+# get the columns that matter for mapping and cleaning the occurrence data:
+myspecies_coords <- gbif_lion$data %>% 
+  dplyr::select(decimalLongitude, decimalLatitude, occurrenceStatus, coordinateUncertaintyInMeters, institutionCode, references) %>% 
+  filter(occurrenceStatus == "PRESENT")
+
+head(myspecies_coords) # 496 records
+
+```
+
+
+### simple map of occurence data
+```{r}
+(data("wrld_simpl"))
+plot(wrld_simpl, 
+     xlim = range(myspecies_coords$decimalLongitude), 
+     ylim = range(myspecies_coords$decimalLatitude), 
+     axes=TRUE, 
+     col="light yellow"
+     )
+box()
+# add the points
+points(myspecies_coords$decimalLongitude, myspecies_coords$decimalLatitude, col='orange', pch=20, cex=0.75)
+# plot points again to add a border, for better visibility
+points(myspecies_coords$decimalLongitude, myspecies_coords$decimalLatitude, col='red', cex=0.75)
+
+```
+
+
+### Cleaning Data
+```{r}
+# remove duplicates
+cleaned_1 <- myspecies_coords %>% 
+  distinct(decimalLatitude, decimalLatitude, .keep_all = TRUE) # 337 remaining
+
+cleaned_2 <- coord_incomplete(coord_imprecise(coord_impossible(coord_unlikely(cleaned_1)))) %>% 
+  rename(lat = decimalLatitude) %>% 
+  rename(long = decimalLongitude)
+# nrow(cleaned_2) #330
+
+lat_long <- cleaned_2 %>% 
+  dplyr::select(lat, long)
+
+```
+
+### Absence and Background Points
+```{r}
+r <- getData("worldclim",var="bio",res=10)
+r <- r[[c(1,12)]]
+raster <- r[[1]]
+# plot(raster)
+
+# # cropping raster
+# e <- extent(
+#   min(cleaned_2$lat)-10,
+#   max(cleaned_2$lat)+10, 
+#   min(cleaned_2$long)-20,
+#   max(cleaned_2$long)+20
+# )
+# mask <- crop(raster, e)
+# mask <- raster
+
+# select 500 random points
+# set seed to assure that the examples will always
+# have the same random sample.
+set.seed(1963)
+bg <- randomPoints(mask, 1500)
+plot(bg)
+
+# convert species data to spatial layer
+coordinates(cleaned_2) <- ~long+lat
+projection(cleaned_2) <- CRS('+proj=longlat +datum=WGS84')
+
+# create circles using arbitrary radius of 50 km
+x <- circles(cleaned_2, d = 50000, lonlat = TRUE)
+pol <- polygons(x)
+# plot(pol)
+
+# first method
+# # take random sample of points within the polygons, only want one point per grid
+# # sample randomly from all circles
+# samp1 <- spsample(pol, 250, type = 'random', iter = 25)
+# ## Warning in proj4string(obj): CRS object has comment, which is lost in output
+# # get unique cells
+# cells <- cellFromXY(mask, samp1)
+# length(cells)
+# ## [1] 250
+# cells <- unique(cells)
+# length(cells)
+# ## [1] 161
+# xy <- xyFromCell(mask, cells)
+# 
+# #plot
+# plot(pol, axes=TRUE)
+# points(xy, cex=0.75, pch=20, col='blue')
+
+#second method
+# extract cell numbers for the circles
+v <- raster::extract(mask, x@polygons, cellnumbers = T)
+# use rbind to combine the elements in list v
+v <- do.call(rbind, v)
+# get unique cell numbers from which you could sample
+v <- unique(v[,1])
+head(v)
+## [1] 15531 15717 17581 17582 17765 17767
+# to display the results
+m <- mask
+# plot(m)
+m[] <- NA
+m[v] <- 1
+plot(m, ext = extent(x@polygons) + 10)
+plot(x@polygons, add = T)
+
+```
+
+### Environmental Data
+```{r}
+path <- file.path(system.file(package = "dismo"))
+files <- list.files(path, pattern='grd$', full.names=TRUE )
+
+clim_data <- getData("worldclim",var="bio",res=10)
+
+# cropping raster
+e <- extent(
+  min(cleaned_2$long) - 1,
+  max(cleaned_2$long) + 1,
+  min(cleaned_2$lat) - 1,
+  max(cleaned_2$lat ) + 1)
+
+clim_data <- crop(clim_data, e)
+
+# plot(clim_data)
+
+plot(clim_data, 1, 
+     # xlim = range(myspecies_coords$decimalLongitude), 
+     # ylim = range(myspecies_coords$decimalLatitude)
+     )
+plot(wrld_simpl, add=TRUE)
+plot(x@polygons, add = T)
+# points(myspecies_coords$decimalLongitude, myspecies_coords$decimalLatitude, col='orange', pch=20, cex=0.75)
+points(lat_long$long, lat_long$lat, col='orange', pch=20, cex=0.75)
+
+
+# problem points: Point 1
+# points(38.163900, -0.117300, col='blue', pch = 20, cex = 0.75)
+# point 2
+# points(38.200700, -0.242700, col='blue', pch = 20, cex = 0.75)
+
+
+```
+
+### Extracting from Raster
+```{r}
+r <- getData("worldclim",var="bio",res=10)
+
+presvals <- extract(r, lat_long)
+presvals # what are the NA values?
+
+# extract for 500 random background points
+# random set of points for this example
+set.seed(0)
+backgr <- randomPoints(r, 1500)
+plot(backgr)
+absvals <- extract(r, backgr)
+absvals
+pb <- c(rep(1, nrow(presvals)), rep(0, nrow(absvals)))
+sdmdata <- data.frame(cbind(pb, rbind(presvals, absvals))) %>% 
+  drop_na()
+# sdmdata[,'biome'] = as.factor(sdmdata[,'biome'])
+head(sdmdata)
+
+```
+
