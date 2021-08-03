@@ -9,16 +9,11 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 
 library(tidyverse)
-# install.packages("rgbif")
 library(rgbif)
-# library(maps)
-# install.packages("dismo")
-# library(dismo)
 library(maptools)
 library(dismo)
 library(rgeos)
 library(viridis)
-# install.packages("scrubr")
 library(scrubr)
 library(raster)
 
@@ -44,18 +39,21 @@ head(myspecies_coords) # 496 records
 
 ### simple map of occurence data
 ```{r}
+# downloads map data
 (data("wrld_simpl"))
+
+# plot
 plot(wrld_simpl, 
-     xlim = range(myspecies_coords$decimalLongitude), 
+     xlim = range(myspecies_coords$decimalLongitude),
      ylim = range(myspecies_coords$decimalLatitude), 
-     axes=TRUE, 
-     col="light yellow"
+     axes = TRUE, 
+     col = "light yellow"
      )
 box()
 # add the points
-points(myspecies_coords$decimalLongitude, myspecies_coords$decimalLatitude, col='orange', pch=20, cex=0.75)
+points(myspecies_coords$decimalLongitude, myspecies_coords$decimalLatitude, col = 'blue', pch = 20, cex = 0.75)
 # plot points again to add a border, for better visibility
-points(myspecies_coords$decimalLongitude, myspecies_coords$decimalLatitude, col='red', cex=0.75)
+points(myspecies_coords$decimalLongitude, myspecies_coords$decimalLatitude, col = 'red', cex = 0.75)
 
 ```
 
@@ -69,6 +67,7 @@ cleaned_1 <- myspecies_coords %>%
 cleaned_2 <- coord_incomplete(coord_imprecise(coord_impossible(coord_unlikely(cleaned_1)))) %>% 
   rename(lat = decimalLatitude) %>% 
   rename(long = decimalLongitude)
+
 # nrow(cleaned_2) #330
 
 lat_long <- cleaned_2 %>% 
@@ -78,24 +77,26 @@ lat_long <- cleaned_2 %>%
 
 ### Absence and Background Points
 ```{r}
+# downloading worldclim data
 r <- getData("worldclim",var="bio",res=10)
-r <- r[[c(1,12)]]
-raster <- r[[1]]
+r <- r[[c(1,12)]] # selecting bioclim 1-12
+raster <- r[[1]] # selectiong bioclim 1
+
+# viewing the raster
 # plot(raster)
 
-# # cropping raster
-# e <- extent(
-#   min(cleaned_2$lat)-10,
-#   max(cleaned_2$lat)+10, 
-#   min(cleaned_2$long)-20,
-#   max(cleaned_2$long)+20
-# )
-# mask <- crop(raster, e)
+# cropping raster
+e <- extent(
+  min(cleaned_2$lat)-10,
+  max(cleaned_2$lat)+10,
+  min(cleaned_2$long)-20,
+  max(cleaned_2$long)+20
+)
+mask <- crop(raster, e)
 # mask <- raster
 
 # select 500 random points
-# set seed to assure that the examples will always
-# have the same random sample.
+# set seed to assure that the examples will always have the same random sample.
 set.seed(1963)
 bg <- randomPoints(mask, 1500)
 plot(bg)
@@ -107,7 +108,7 @@ projection(cleaned_2) <- CRS('+proj=longlat +datum=WGS84')
 # create circles using arbitrary radius of 50 km
 x <- circles(cleaned_2, d = 50000, lonlat = TRUE)
 pol <- polygons(x)
-# plot(pol)
+plot(pol)
 
 # first method
 # # take random sample of points within the polygons, only want one point per grid
@@ -136,8 +137,9 @@ v <- do.call(rbind, v)
 v <- unique(v[,1])
 head(v)
 ## [1] 15531 15717 17581 17582 17765 17767
+
 # to display the results
-m <- mask
+# m <- mask
 # plot(m)
 m[] <- NA
 m[v] <- 1
@@ -151,19 +153,27 @@ plot(x@polygons, add = T)
 path <- file.path(system.file(package = "dismo"))
 files <- list.files(path, pattern='grd$', full.names=TRUE )
 
-clim_data <- getData("worldclim",var="bio",res=10)
+clim_data <- getData("worldclim", var = "bio", res = 10)
 
 # cropping raster
+# e <- extent(
+#   min(cleaned_2$long) - 1,
+#   max(cleaned_2$long) + 1,
+#   min(cleaned_2$lat) - 1,
+#   max(cleaned_2$lat ) + 1)
 e <- extent(
-  min(cleaned_2$long) - 1,
-  max(cleaned_2$long) + 1,
-  min(cleaned_2$lat) - 1,
-  max(cleaned_2$lat ) + 1)
+  min(cleaned_2$lat)-10,
+  max(cleaned_2$lat)+10,
+  min(cleaned_2$long)-20,
+  max(cleaned_2$long)+20
+)
 
 clim_data <- crop(clim_data, e)
+wrld_simpl <- crop(wrld_simpl, e)
 
 # plot(clim_data)
 
+# making sure everything lines up
 plot(clim_data, 1, 
      # xlim = range(myspecies_coords$decimalLongitude), 
      # ylim = range(myspecies_coords$decimalLatitude)
@@ -184,9 +194,9 @@ points(lat_long$long, lat_long$lat, col='orange', pch=20, cex=0.75)
 
 ### Extracting from Raster
 ```{r}
-r <- getData("worldclim",var="bio",res=10)
+r <- getData("worldclim",var = "bio",res = 10)
 
-presvals <- extract(r, lat_long)
+presvals <- raster::extract(r, lat_long)
 presvals # what are the NA values?
 
 # extract for 500 random background points
@@ -194,7 +204,7 @@ presvals # what are the NA values?
 set.seed(0)
 backgr <- randomPoints(r, 1500)
 plot(backgr)
-absvals <- extract(r, backgr)
+absvals <- raster::extract(r, backgr)
 absvals
 pb <- c(rep(1, nrow(presvals)), rep(0, nrow(absvals)))
 sdmdata <- data.frame(cbind(pb, rbind(presvals, absvals))) %>% 
@@ -203,4 +213,3 @@ sdmdata <- data.frame(cbind(pb, rbind(presvals, absvals))) %>%
 head(sdmdata)
 
 ```
-
