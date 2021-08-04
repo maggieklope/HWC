@@ -100,6 +100,11 @@ set.seed(1963)
 bg <- randomPoints(mask, 1500)
 plot(bg)
 
+bg2 <- randomPoints(mask, 100, ext=e)
+plot(!is.na(mask), legend=FALSE)
+plot(e, add=TRUE, col='red')
+points(bg2, cex=0.5)
+
 # convert species data to spatial layer
 coordinates(cleaned_2) <- ~long+lat
 projection(cleaned_2) <- CRS('+proj=longlat +datum=WGS84')
@@ -112,20 +117,25 @@ pol <- polygons(x)
 # first method
 # # take random sample of points within the polygons, only want one point per grid
 # # sample randomly from all circles
-# samp1 <- spsample(pol, 250, type = 'random', iter = 25)
+samp1 <- spsample(pol, 250, type = 'random', iter = 25)
 # ## Warning in proj4string(obj): CRS object has comment, which is lost in output
 # # get unique cells
-# cells <- cellFromXY(mask, samp1)
-# length(cells)
+cells <- cellFromXY(mask, samp1)
+length(cells)
 # ## [1] 250
-# cells <- unique(cells)
-# length(cells)
+cells <- unique(cells)
+length(cells)
 # ## [1] 161
-# xy <- xyFromCell(mask, cells)
+xy <- xyFromCell(mask, cells)
 # 
 # #plot
 # plot(pol, axes=TRUE)
 # points(xy, cex=0.75, pch=20, col='blue')
+
+spxy <- SpatialPoints(xy, proj4string=CRS('+proj=longlat +datum=WGS84'))
+o <- over(spxy, geometry(x))
+xyInside <- xy[!is.na(o), ]
+spxyInside <- SpatialPoints(xyInside, proj4string=CRS('+proj=longlat +datum=WGS84'))
 
 #second method
 # extract cell numbers for the circles
@@ -192,14 +202,14 @@ presvals # what are the NA values?
 # extract for 500 random background points
 # random set of points for this example
 set.seed(0)
-backgr <- randomPoints(r, 1500)
-plot(backgr)
-absvals <- extract(r, backgr)
+backgr2 <- randomPoints(r, 500, ext = e)
+plot(backgr2)
+absvals <- extract(r, backgr2)
 absvals
 pb <- c(rep(1, nrow(presvals)), rep(0, nrow(absvals)))
 sdmdata <- data.frame(cbind(pb, rbind(presvals, absvals))) %>% 
   drop_na()
-# sdmdata[,'biome'] = as.factor(sdmdata[,'biome'])
+ sdmdata[,'biome'] = as.factor(sdmdata[,'biome'])
 head(sdmdata)
 
 ```
