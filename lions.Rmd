@@ -21,7 +21,7 @@ library(viridis)
 # install.packages("scrubr")
 library(scrubr)
 library(raster)
-
+library(DHARMa)
 
 # download lion data (will take a while)
 gbif_lion <- occ_data(scientificName = "Panthera leo", 
@@ -83,27 +83,21 @@ r <- r[[c(1,12)]]
 raster <- r[[1]]
 # plot(raster)
 
-# # cropping raster
-# e <- extent(
-#   min(cleaned_2$lat)-10,
-#   max(cleaned_2$lat)+10, 
-#   min(cleaned_2$long)-20,
-#   max(cleaned_2$long)+20
-# )
-# mask <- crop(raster, e)
-# mask <- raster
+# cropping raster
+e <- extent(
+  min(cleaned_2$long)-1,
+  max(cleaned_2$long)+1,
+  min(cleaned_2$lat)-1,
+  max(cleaned_2$lat)+1
+)
+ mask <- crop(raster, e)
 
 # select 500 random points
 # set seed to assure that the examples will always
 # have the same random sample.
 set.seed(1963)
-bg <- randomPoints(mask, 1500)
+bg <- randomPoints(mask, 500)
 plot(bg)
-
-bg2 <- randomPoints(mask, 100, ext=e)
-plot(!is.na(mask), legend=FALSE)
-plot(e, add=TRUE, col='red')
-points(bg2, cex=0.5)
 
 # convert species data to spatial layer
 coordinates(cleaned_2) <- ~long+lat
@@ -112,25 +106,23 @@ projection(cleaned_2) <- CRS('+proj=longlat +datum=WGS84')
 # create circles using arbitrary radius of 50 km
 x <- circles(cleaned_2, d = 50000, lonlat = TRUE)
 pol <- polygons(x)
-# plot(pol)
+plot(pol)
 
 # first method
 # # take random sample of points within the polygons, only want one point per grid
 # # sample randomly from all circles
 samp1 <- spsample(pol, 250, type = 'random', iter = 25)
-# ## Warning in proj4string(obj): CRS object has comment, which is lost in output
 # # get unique cells
 cells <- cellFromXY(mask, samp1)
 length(cells)
 # ## [1] 250
 cells <- unique(cells)
-length(cells)
-# ## [1] 161
+length(cells) #238
 xy <- xyFromCell(mask, cells)
 # 
 # #plot
-# plot(pol, axes=TRUE)
-# points(xy, cex=0.75, pch=20, col='blue')
+plot(pol, axes=TRUE)
+points(xy, cex=0.75, pch=20, col='blue')
 
 spxy <- SpatialPoints(xy, proj4string=CRS('+proj=longlat +datum=WGS84'))
 o <- over(spxy, geometry(x))
@@ -158,37 +150,17 @@ plot(x@polygons, add = T)
 
 ### Environmental Data
 ```{r}
-path <- file.path(system.file(package = "dismo"))
-files <- list.files(path, pattern='grd$', full.names=TRUE )
+#path <- file.path(system.file(package = "dismo"))
+#files <- list.files(path, pattern='grd$', full.names=TRUE )
 
-clim_data <- getData("worldclim",var="bio",res=10)
-
-# cropping raster
-e <- extent(
-  min(cleaned_2$long) - 1,
-  max(cleaned_2$long) + 1,
-  min(cleaned_2$lat) - 1,
-  max(cleaned_2$lat ) + 1)
-
-clim_data <- crop(clim_data, e)
-
-# plot(clim_data)
-
-plot(clim_data, 1, 
-     # xlim = range(myspecies_coords$decimalLongitude), 
-     # ylim = range(myspecies_coords$decimalLatitude)
+clim_data <- getData("worldclim", var = "bio", res = 10)
+# making sure everything lines up
+plot(r, 1, 
+     xlim = range(lat_long$long), 
+     ylim = range(lat_long$lat)
      )
-plot(wrld_simpl, add=TRUE)
 plot(x@polygons, add = T)
-# points(myspecies_coords$decimalLongitude, myspecies_coords$decimalLatitude, col='orange', pch=20, cex=0.75)
-points(lat_long$long, lat_long$lat, col='orange', pch=20, cex=0.75)
-
-
-# problem points: Point 1
-# points(38.163900, -0.117300, col='blue', pch = 20, cex = 0.75)
-# point 2
-# points(38.200700, -0.242700, col='blue', pch = 20, cex = 0.75)
-
+points(cleaned_2$long,cleaned_2$lat, col='orange', pch=20, cex=0.75)
 
 ```
 
@@ -196,21 +168,160 @@ points(lat_long$long, lat_long$lat, col='orange', pch=20, cex=0.75)
 ```{r}
 r <- getData("worldclim",var="bio",res=10)
 
-presvals <- extract(r, lat_long)
+# checking that crs are the same
+crs(r)
+crs(cleaned_2)
+
+presvals <- raster::extract(r, lat_long) #was getting an error without specifying the raster package
 presvals # what are the NA values?
+
+r_2 <- crop(r, e)
 
 # extract for 500 random background points
 # random set of points for this example
 set.seed(0)
-backgr2 <- randomPoints(r, 500, ext = e)
-plot(backgr2)
-absvals <- extract(r, backgr2)
+backgr <- randomPoints(r_2, 500)
+plot(backgr)
+absvals <- raster::extract(r_2, backgr)
 absvals
 pb <- c(rep(1, nrow(presvals)), rep(0, nrow(absvals)))
 sdmdata <- data.frame(cbind(pb, rbind(presvals, absvals))) %>% 
   drop_na()
- sdmdata[,'biome'] = as.factor(sdmdata[,'biome'])
+# sdmdata[,'biome'] = as.factor(sdmdata[,'biome'])
 head(sdmdata)
 
 ```
+
+
+# model fitting
+```{r}
+# first model using glm()function
+# presence/absence as a model of bio predictors
+m1 <- glm(pb ~ bio1 + bio5 + bio12, data = sdmdata) # shouldn't this be a binomial glm with presence/absence?
+summary(m1)
+# using simulateResiduals from the DHARMa package to look @ model fit
+simulateResiduals(m1, plot = TRUE) # horrible model fit
+
+# second model using bioclim function
+bc <- bioclim(presvals[,c('bio1', 'bio5', 'bio12')])
+class(bc)
+pairs(bc)
+```
+
+# model predictions
+```{r}
+# making dataframe for predicted/future climate data
+bio1 = c(40, 150, 200)
+bio5 = c(60, 115, 290)
+bio12 = c(600, 1600, 1700)
+pd = data.frame(cbind(bio1, bio5, bio12))
+pd
+# predictions with first model
+predict(m1, pd)
+# predictions with second model
+predict(bc, pd)
+```
+
+# model evaluation
+
+AUC = Area Under the REceiver Operator Curve
+
+- A measure of rank-correlation. 
+- High values = high predicted suitability
+
+## using our data
+```{r}
+# k-fold data partitioning
+# save presence and background points
+pres <- sdmdata[sdmdata[,1] == 1, 2:9]
+back <- sdmdata[sdmdata[,1] == 0, 2:9]
+# partitioning the presence data into 5 groups (background data only used for model testing, does not need to be partitioned)
+k <- 5 # setting number of groups
+group <- kfold(pres, k) # using kfold: each record in data gets randomly assigned to group 1-5
+# testing model 5 times, each run corresponds to one group of data
+emp <- list() # create empty list that data saves into inside the for loop
+for (i in 1:k) {
+    train <- pres[group != i,] # trains on all the other groups
+    test <- pres[group == i,] # tests on the selected group
+    bc <- bioclim(train) # runs bioclim model
+    emp[[i]] <- evaluate(p=test, a=back, bc) #saves model evaluation into e
+}
+# now we can extract information from e
+# getting AUC values
+auc <- sapply(emp, function(x){x@auc})
+auc
+mean(auc)
+# getting spec_sens = "maximum of the sum of the sensitivity (true positive rate) and specificity (true negative rate)” threshold
+# this is sometimes uses as a threshold for setting cells to presence or absence
+sapply( emp, function(x){ threshold(x)['spec_sens'] } )
+```
+
+However, AUC values are biased because they vary with the spatial extent used to select the background points.
+
+Hijmans (2012) suggests that one could remove “spatial sorting bias” (the difference between the distance from testing-presence to training-presence and the distance from testing-absence to training-presence points) through “point-wise distance sampling”.
+
+
+```{r}
+predictors <- r_2
+names(predictors)
+
+presvals <- raster::extract(predictors, lat_long)
+set.seed(0)
+backgr <- randomPoints(predictors, 500)
+nr <- nrow(cleaned_2)
+s <- sample(nr, 0.25 * nr)
+pres_train <- cleaned_2[-s, ]
+pres_test <- cleaned_2[s, ]
+nr <- nrow(backgr)
+set.seed(9)
+s <- sample(nr, 0.25 * nr)
+back_train <- backgr[-s, ]
+back_test <- backgr[s, ]
+
+# sb[,1] / sb[,2] is an indicator of spatial sorting bias (SSB). If there is no SSB this value should be 1, in these data it is close to zero, indicating that SSB is very strong
+
+sb <- ssb(pres_test, back_test, pres_train)
+sb[,1] / sb[,2]
+# 0.05448451
+```
+
+Close to zero - try creating a sub-sample where SSB is removed
+```{r}
+i <- pwdSample(pres_test, back_test, pres_train, n=1, tr=0.1)
+pres_test_pwd <- pres_test[!is.na(i[,1]), ]
+back_test_pwd <- back_test[na.omit(as.vector(i)), ]
+sb2 <- ssb(pres_test_pwd, back_test_pwd, pres_train)
+sb2[1]/ sb2[2]
+
+# 1.009531
+```
+
+Spatial sorting biased is much reduced -> check AUC value:
+```{r}
+bc <- bioclim(predictors, pres_train)
+evaluate(bc, p=pres_test, a=back_test, x=predictors)
+# class          : ModelEvaluation 
+# n presences    : 82 
+# n absences     : 125 
+# AUC            : 0.8513171 
+# cor            : 0.5432984 
+# max TPR+TNR at : 0.01204575 
+
+evaluate(bc, p=pres_test_pwd, a=back_test_pwd, x=predictors)
+# class          : ModelEvaluation 
+# n presences    : 14 
+# n absences     : 14 
+# AUC            : 0.4183673 
+# cor            : -0.1338592 
+# max TPR+TNR at : 0.03228866 
+```
+Lower AUC value for sample with reduced spatial sorting bias. 
+
+
+
+
+
+
+
+
 
