@@ -1,0 +1,338 @@
+---
+title: "Lion_SDM_Wallace"
+author: "Mika Leslie"
+date: "8/13/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(spocc)
+library(spThin)
+library(dismo)
+library(rgeos)
+library(ENMeval)
+
+library(tidyverse)
+# install.packages("rgbif")
+library(rgbif)
+# library(maps)
+# install.packages("dismo")
+# library(dismo)
+library(maptools)
+library(viridis)
+# install.packages("scrubr")
+library(scrubr)
+library(raster)
+library(DHARMa)
+
+# download lion data (will take a while)
+# gbif_lion <- occ_data(scientificName = "Panthera leo", 
+#                        hasCoordinate = TRUE, 
+#                        continent = "Africa")
+
+#data downloaded from Wallace
+lion <- read_csv("Panthera_leo_original_gbif.csv")
+```
+
+Record of analysis for *Panthera leo*.
+
+### Getting coordinates
+```{r}
+# get the columns that matter for mapping and cleaning the occurrence data:
+myspecies_coords <- lion %>% 
+  dplyr::select(name, longitude, latitude, occurrenceStatus, coordinateUncertaintyInMeters, institutionCode, references) %>% 
+  filter(occurrenceStatus == "PRESENT")
+
+head(myspecies_coords) # 7461 records
+
+```
+
+```{r}
+# remove rows with duplicate coordinates
+occs.dups <- duplicated(myspecies_coords[c('longitude', 'latitude')])
+occs <- myspecies_coords[!occs.dups,] #4466 obs
+# make sure latitude and longitude are numeric (sometimes they are characters)
+occs$latitude <- as.numeric(occs$latitude)
+occs$longitude <- as.numeric(occs$longitude)
+# give all records a unique ID
+occs$occID <- row.names(occs)
+
+#cleaning data
+occs <- coord_incomplete(coord_imprecise(coord_impossible(coord_unlikely(occs))))
+# 4444 obs
+```
+
+### Process Occurrence Data
+
+The following code recreates the polygon used to select occurrences to
+keep in the analysis.
+
+```{r}
+#Polygon created to select within Africa
+selCoords <- data.frame(x = c(16.9763, 30.1599, 42.8161, 53.1127, 44.3985, 30.6876, 5.9024, -18.1796, -21.5195, 1.3321, 16.9763), y = c(-36.1847, -34.3913, -13.681, 13.5546, 11.9722, 33.6672, 39.5866, 32.785, 4.8474, 0.4587, -36.1847))
+selPoly <- sp::SpatialPolygons(list(sp::Polygons(list(sp::Polygon(selCoords)), ID=1)))
+
+#Check boundary extent - cropping to Africa for now 
+(data("wrld_simpl"))
+plot(wrld_simpl, 
+     xlim = range(selCoords$x),
+     ylim = range(selCoords$y),
+     axes=TRUE, 
+     col="light yellow"
+)
+box()
+# add the points
+points(selCoords$x, selCoords$y, col='orange', pch=20, cex=0.75)
+# plot points again to add a border, for better visibility
+points(selCoords$x, selCoords$y, col='red', cex=0.75)
+
+occs.xy <- occs[c('longitude', 'latitude')] %>% 
+  drop_na() #NA values need to be removed for the following function
+sp::coordinates(occs.xy) <- ~ longitude + latitude
+
+# sp::over(x, y) -> x = "SpatialPoints", y = "SpatialPolygons"
+# returns a numeric vector of length equal to the number of points; the number is the index (number) of the polygon of y in which a point falls; NA denotes the point does not fall in a polygon; if a point falls in multiple polygons, the last polygon is recorded.
+intersect <- sp::over(occs.xy, selPoly)
+intersect.rowNums <- as.numeric(which(!(is.na(intersect))))
+occs <- occs[intersect.rowNums, ] #4271 obs
+
+#Check occurrence points
+plot(wrld_simpl, 
+     axes=TRUE, 
+     col="light yellow"
+)
+box()
+# add the points
+points(occs$longitude, occs$latitude, col='orange', pch=20, cex=0.75)
+# plot points again to add a border, for better visibility
+points(occs$longitude, occs$latitude, col='red', cex=0.75)
+#points are still showing up outside of Africa(?)
+
+#try method 2
+sp::coordinates(occs) <- ~ longitude + latitude
+occs_crop <- crop(occs, selPoly) 
+#4254 obs
+
+plot(wrld_simpl, 
+     axes=TRUE, 
+     col="light yellow"
+)
+box()
+# add the points
+points(occs_crop$longitude, occs_crop$latitude, col='orange', pch=20, cex=0.75)
+# plot points again to add a border, for better visibility
+points(occs_crop$longitude, occs_crop$latitude, col='red', cex=0.75)
+
+occs_crop <- as.data.frame(occs_crop)
+```
+
+Spatial thinning selected. Thin distance selected is 10 km.
+
+```{r}
+output <- spThin::thin(occs_crop, 'latitude', 'longitude', 'name', thin.par = 10, reps = 100, locs.thinned.list.return = TRUE, write.files = FALSE, verbose = FALSE)
+```
+
+Since spThin did 100 iterations, there are 100 different variations of
+how it thinned your occurrence localities. As there is a stochastic
+element in the algorithm, some iterations may include more localities
+than the others, and we need to make sure we maximize the number of
+localities we proceed with.
+
+```{r}
+# find the iteration that returns the max number of occurrences
+maxThin <- which(sapply(output, nrow) == max(sapply(output, nrow)))
+# if there's more than one max, pick the first one
+maxThin <- output[[ifelse(length(maxThin) > 1, maxThin[1], maxThin)]]  
+# subset occs to match only thinned occs
+occs <- occs[as.numeric(rownames(maxThin)),]  
+#1308 obs
+```
+
+### Cleaning data 
+```{r}
+occs <- coord_incomplete(coord_imprecise(coord_impossible(coord_unlikely(occs))))
+# 1294 obs
+```
+
+### Obtain Environmental Data
+
+Using WorldClim
+(<a href="http://www.worldclim.org/" class="uri">http://www.worldclim.org/</a>)
+bioclimatic dataset at resolution of 2.5 arcmin.
+
+```{r}
+#Get WorldClim bioclimatic variable rasters
+clim_data <- getData("worldclim", var="bio", res=2.5)
+
+# extract environmental values at occ grid cells
+locs.vals <- raster::extract(clim_data[[1]], occs[, c('longitude', 'latitude')])
+# remove occs without environmental values
+occs <- occs[!is.na(locs.vals), ]  
+#1293 obs
+```
+
+### Process Environmental Data
+
+Background selection technique chosen as Point Buffers.
+
+```{r}
+# make SpatialPoints object for buffering
+occs.xy <- occs[c('longitude', 'latitude')]
+sp::coordinates(occs.xy) <- ~ longitude + latitude
+bgExt <- occs.xy
+```
+
+Buffer size of the study extent polygon defined as 0.5 degrees.
+
+```{r}
+bgExt <- rgeos::gBuffer(bgExt, width = 0.5)
+```
+
+Mask environmental variables by , and take a random sample of background
+values from the study extent. As the sample is random, your results may
+be different than those in the session. If there seems to be too much
+variability in these background samples, try increasing the number from
+10,000 to something higher (e.g. 50,000 or 100,000). The better your
+background sample, the less variability you’ll have between runs.
+
+```{r}
+# crop the environmental rasters by the background extent shape
+envsBgCrop <- raster::crop(envs, bgExt)
+# mask the background extent shape from the cropped raster
+envsBgMsk <- raster::mask(envsBgCrop, bgExt)
+# sample random background points
+bg.xy <- dismo::randomPoints(envsBgMsk, )
+# convert matrix output to data frame
+bg.xy <- as.data.frame(bg.xy)  
+colnames(bg.xy) <- c("longitude", "latitude")
+```
+
+### Partition Occurrence Data
+
+Occurrence data is now partitioned for cross-validation, a method that
+iteratively builds a model on all but one group and evaluates that model
+on the left-out group.
+
+For example, if the data is partitioned into 3 groups A, B, and C, a
+model is first built with groups A and B and is evaluated on C. This is
+repeated by building a model with B and C and evaluating on A, and so on
+until all combinations are done.
+
+Cross-validation operates under the assumption that the groups are
+independent of each other, which may or may not be a safe assumption for
+your dataset. Spatial partitioning is one way to ensure more
+independence between groups.
+
+You selected to partition your occurrence data by the method.
+
+```{r}
+occs.xy <- occs[c('longitude', 'latitude')]
+group.data <- ENMeval::get.block(occ = occs.xy, bg = bg.xy)
+```
+
+```{r}
+# pull out the occurrence and background partition group numbers from the list
+occs.grp <- group.data[[1]]
+bg.grp <- group.data[[2]]
+```
+
+### Build and Evaluate Niche Model
+
+You selected the maxent model.
+
+```{r}
+# define the vector of regularization multipliers to test
+rms <- seq(1, 3, 1)
+# iterate model building over all chosen parameter settings
+e <- ENMeval::ENMevaluate(occ = occs.xy, env = envsBgMsk, bg.coords = bg.xy,
+                          RMvalues = rms, fc = c('L', 'LQ', 'H'), method = 'user', 
+                          occ.grp = occs.grp, bg.grp = bg.grp, 
+                          clamp = TRUE, algorithm = "maxnet")
+
+# unpack the results data frame, the list of models, and the RasterStack of raw predictions
+evalTbl <- e@results
+evalMods <- e@models
+names(evalMods) <- e@tune.settings$tune.args
+evalPreds <- e@predictions
+```
+
+```{r}
+# view response curves for environmental variables with non-zero coefficients
+plot(evalMods[["rm.1_fc.L"]], vars = c('bio03', 'bio04', 'bio05', 'bio06', 'bio08', 'bio09', 'bio10', 'bio12', 'bio15', 'bio18', 'bio19'), type = "cloglog")
+```
+
+```{r}
+# view ENMeval results
+ENMeval::evalplot.stats(e, stats = "auc.val", "rm", "fc")
+```
+
+```{r}
+# Select your model from the models list
+mod <- evalMods[["rm.1_fc.L"]]
+```
+
+```{r}
+# generate cloglog prediction
+pred <- predictMaxnet(mod, envsBgMsk, type = 'cloglog', clamp = TRUE) 
+```
+
+```{r}
+# get predicted values for occurrence grid cells
+occPredVals <- raster::extract(pred, occs.xy)
+# define minimum training presence threshold
+thr <- thresh(occPredVals, "mtp")
+# threshold model prediction
+pred <- pred > thr
+```
+
+```{r}
+# plot the model prediction
+plot(pred)
+```
+
+### Project Niche Model
+
+You selected to project your model. First define a polygon with the
+coordinates you chose, then crop and mask your predictor rasters.
+Finally, predict suitability values for these new raster cells based on
+the model you selected.
+
+```{r}
+projCoords <- data.frame(x = c(12.778, 30.7955, 35.1901, 33.652, 35.0582, 31.6744, 32.1578, 25.7662, 19.2183, 16.8453, 15.3951, 14.9117, 12.8023, 12.778), y = c(-15.8286, -14.9388, -19.0978, -20.8736, -22.7502, -25.4377, -28.1053, -33.5133, -33.9883, -28.0035, -26.99, -22.2783, -17.9467, -15.8286))
+projPoly <- sp::SpatialPolygons(list(sp::Polygons(list(sp::Polygon(projCoords)), ID=1)))
+```
+
+### Project Niche Model to New Time
+
+Now download the future climate variables chosen with *Wallace*, crop
+and mask them by projPoly, and use the maxnet.predictRaster() function
+to predict the values for the new time based on the model selected.
+
+```{r}
+envsFuture <- raster::getData("CMIP5", var = "bio", res = 2.5, rcp = 85, model = "CC", year = 70)
+
+predsProj <- raster::crop(envsFuture, projPoly)
+predsProj <- raster::mask(predsProj, projPoly)
+
+# rename future climate variable names
+names(predsProj) <- paste0('bio', sprintf("%02d", 1:19))
+# select climate variables
+predsProj <- raster::subset(predsProj, names(envs))
+```
+
+```{r}
+# predict model
+proj <- predictMaxnet(mod, predsProj, type = 'cloglog', clamp = TRUE)
+```
+
+```{r}
+# plot the model prediction
+plot(proj)
+```
+
+
+
