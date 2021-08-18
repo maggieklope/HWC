@@ -1,0 +1,201 @@
+---
+title: "Untitled"
+author: "Maggie Klope"
+date: "8/17/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(rgbif)
+library(maptools)
+library(dismo)
+library(rgeos)
+library(viridis)
+library(scrubr)
+library(raster)
+library(DHARMa)
+library(spocc)
+library(sf)
+library(rgdal)
+library(spData)
+```
+
+### 1) Download species occurence data and get coordinates
+- Do we want to restrict to occuranceStatus = "PRESENT"?
+```{r}
+
+# can use occ_data function for GBIF
+results <- occ_data(scientificName = "Panthera leo", 
+                      hasCoordinate = TRUE, 
+                      continent = "Africa")
+
+results_lion <- results$data %>% 
+  rename(latitude = decimalLatitude) %>% 
+  rename(longitude = decimalLongitude)
+
+# or can use occ() function for more sources
+results <- spocc::occ(
+  query = "Panthera leo", 
+  from = "gbif", 
+  limit = 1000,
+  has_coords = TRUE)
+
+results_lion <- results[["gbif"]]$data[[formatSpName("Panthera leo")]]
+
+# select just coordinates
+myspecies_coords <- results_lion%>%
+  dplyr::select(longitude, latitude, occurrenceStatus, coordinateUncertaintyInMeters, institutionCode, references) %>%
+  filter(occurrenceStatus == "PRESENT")
+
+```
+
+### 2) Clean Data
+```{r}
+# remove rows with duplicate coordinates
+occs.dups <- duplicated(myspecies_coords[c('longitude', 'latitude')])
+myspecies_coords <- myspecies_coords[!occs.dups,]
+
+# make sure latitude and longitude are numeric (sometimes they are characters)
+myspecies_coords$latitude <- as.numeric(myspecies_coords$latitude)
+myspecies_coords$longitude <- as.numeric(myspecies_coords$longitude)
+
+# give all records a unique ID
+myspecies_coords$occID <- row.names(myspecies_coords)
+
+# removing unlikely, impresise, incommplete, and impossible coordinates
+occs <- coord_incomplete(coord_imprecise(coord_impossible(coord_unlikely(myspecies_coords))))
+
+lion_cleaned <- coord_incomplete(coord_imprecise(coord_impossible(coord_unlikely(myspecies_coords))))%>%
+  rename(lat = latitude) %>% # renaming lat/long so it works with projection later on?
+  rename(long = longitude)
+
+# save lat/long points if needed
+# lat_long <- lion_cleaned %>% 
+#   dplyr::select(lat, long)
+# 
+# write_csv(lat_long, "lion_coords.csv")
+
+```
+
+### 4) crop data using Africa boundary
+
+```{r}
+# load world data from spData package
+world_sf = st_as_sf(world_sp, "sf")
+
+# filter to just Africa (removing Madagascar for now)
+africa <- world_sf %>% 
+  filter(continent == "Africa") %>% 
+  filter(name_long != "Madagascar") %>% 
+  dplyr::select(name_long)
+
+# merge all the country polygons
+africa_2 <- st_union(africa)
+# plot(africa_2)
+
+# convert to a spatial polygon
+africa_spatial <- as_Spatial(africa_2, cast = TRUE)
+
+
+# creates new data frame with observation data lat/long points
+occs.xy <- occs[c('longitude', 'latitude')]
+
+# convert species data to spatial layer
+coordinates(occs.xy) <- ~longitude+latitude
+projection(occs.xy) <- CRS('+proj=longlat +datum=WGS84')
+
+# double-check that polygon and points have the same projection
+crs(africa_spatial)
+crs(occs.xy)
+
+# overlays those points over the polygon
+intersect <- sp::over(occs.xy, africa_spatial)
+
+# removes na values, so selects for points where they overlap the focal polygon
+intersect.rowNums <- as.numeric(which(!(is.na(intersect))))
+
+# filters our occurrence data to those overlapping points
+occs <- occs[intersect.rowNums, ]
+occs$name <- "Pantheria leo"
+
+```
+
+### 3) Spatial thin
+
+```{r}
+# just doing 10 replicates for now, thinning to 10 km
+output <- spThin::thin(occs, 'latitude', 'longitude', 'name', 
+                       thin.par = 10, 
+                       reps = 10, 
+                       locs.thinned.list.return = TRUE, 
+                       write.files = FALSE, 
+                       verbose = FALSE)
+
+# find the iteration that returns the max number of occurrences
+maxThin <- which(sapply(output, nrow) == max(sapply(output, nrow)))
+
+# if there's more than one max, pick the first one
+maxThin <- output[[ifelse(length(maxThin) > 1, maxThin[1], maxThin)]]  
+
+# subset occs to match only thinned occs
+occs <- occs[as.numeric(rownames(maxThin)),]  
+
+```
+
+### 4) Create background points
+
+```{r}
+# need to load a bioclim raster in order to get 1 background point/cell
+bioclim_data <- raster::getData("worldclim", var = "bio", res = 2.5) # downloading worldclim data
+bg_raster <- bioclim_data [[1]] # selectiong bioclim 1
+
+# create point buffers of 50 km
+buffer_points <- circles(occs, d = 50000, lonlat = TRUE)
+
+# getting random points from within our polygons
+bg_points <-  spsample(buffer_points@polygons, 1000, type = 'random', iter = 1000)
+
+```
+
+### 5) Load environmental data
+
+```{r}
+# already loaded as bioclim_data above
+
+# cropping to extent of Africal spatial polygon
+bioclim_crop <- raster::crop(bioclim_data, africa_spatial)
+
+# double checking to see they line up
+plot(bioclim_crop[[1]])
+plot(buffer_points, add = TRUE)
+
+```
+
+
+### 6) Extract environmental data for occurence and background points
+
+```{r}
+# need just lat/long values in two columns to used raster extract
+occs.xy <- occs[c('longitude', 'latitude')]
+bg.xy <- as.data.frame(bg_points)
+
+# extracting values
+occ_extract <- raster::extract(bioclim_crop, occs.xy)
+bg_extract <- raster::extract(bioclim_crop, bg.xy)
+
+# saving as data frames
+occ_extract_final <- as.data.frame(occ_extract)
+bg_extract_final <- as.data.frame(bg_extract)
+
+# adding lat/long back in
+occ_extract_final$latitude <- occs.xy$latitude
+occ_extract_final$longitude <- occs.xy$longitude
+
+bg_extract_final$latitude <- bg.xy$y
+bg_extract_final$longitude <- bg.xy$x
+
+```
+
