@@ -195,5 +195,50 @@ occ_extract_final$longitude <- occs.xy$longitude
 bg_extract_final$latitude <- bg.xy$y
 bg_extract_final$longitude <- bg.xy$x
 
+# save csvs
+write_csv(occ_extract_final, "lion_occ_SWD.csv")
+write_csv(bg_extract_final, "lion_bg_SWD.csv")
+
+```
+
+### 7) Download predicted climate rasters
+
+```{r}
+
+future_data <- getData('CMIP5',
+                       var = "bio",
+                       res = 2.5, 
+                       rcp = 85, 
+                       model = 'AC', 
+                       year = 70)
+
+# need names to match up to our preset-time climate data
+names(future_data) <- names(bioclim_data)
+
+
+# cropping to Africa polygon (not sure if we really need to, but might make it go faster)
+future_data_crop <- raster::crop(future_data, africa_spatial)
+
+```
+
+### 8) Extracting predicted climate variables
+
+- Do we only need to do the occurrence points?
+- does it need the long/lat again?
+
+```{r}
+# extracting values
+occ_future_extract <- raster::extract(future_data_crop, occs.xy)
+
+# saving as data frames
+occ_extract_future_final <- as.data.frame(occ_extract)
+
+# adding lat/long back in
+occ_extract_future_final$latitude <- occs.xy$latitude
+occ_extract_future_final$longitude <- occs.xy$longitude
+
+# save csvs
+write_csv(occ_extract_future_final, "lion_future_SWD.csv")
+
 ```
 
