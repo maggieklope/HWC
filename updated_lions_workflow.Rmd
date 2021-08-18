@@ -24,6 +24,7 @@ library(spData)
 ```
 
 ### 1) Download species occurence data and get coordinates
+
 - Do we want to restrict to occuranceStatus = "PRESENT"?
 ```{r}
 
@@ -184,16 +185,19 @@ bg.xy <- as.data.frame(bg_points)
 occ_extract <- raster::extract(bioclim_crop, occs.xy)
 bg_extract <- raster::extract(bioclim_crop, bg.xy)
 
-# saving as data frames
-occ_extract_final <- as.data.frame(occ_extract)
-bg_extract_final <- as.data.frame(bg_extract)
+# saving as data frames, adding in data
+occ_extract_final <- as.data.frame(occ_extract) %>% 
+  mutate(latitude = occs.xy$latitude) %>% # adding long/lat back in
+  mutate(longitude = occs.xy$longitude) %>% 
+  mutate(species = "Panthera leo") %>% # adding species column
+  dplyr::select(species, longitude, latitude, 1:19) # using select() to re-order columns
 
-# adding lat/long back in
-occ_extract_final$latitude <- occs.xy$latitude
-occ_extract_final$longitude <- occs.xy$longitude
-
-bg_extract_final$latitude <- bg.xy$y
-bg_extract_final$longitude <- bg.xy$x
+bg_extract_final <- as.data.frame(bg_extract) %>% 
+  mutate(x = bg.xy$x) %>% 
+  mutate(y = bg.xy$y) %>% 
+  mutate(species = "background") %>% 
+  dplyr::select(species, x, y, 1:19) %>% 
+  drop_na() # remove points with NA values
 
 # save csvs
 write_csv(occ_extract_final, "lion_occ_SWD.csv")
@@ -230,14 +234,13 @@ future_data_crop <- raster::crop(future_data, africa_spatial)
 # extracting values
 occ_future_extract <- raster::extract(future_data_crop, occs.xy)
 
-# saving as data frames
-occ_extract_future_final <- as.data.frame(occ_extract)
+# saving as data frame, add long/lat back in, re-order
+occ_extract_future_final <- as.data.frame(occ_extract) %>% 
+  mutate(latitude = occs.xy$latitude) %>% 
+  mutate(longitude = occs.xy$longitude) %>% 
+  dplyr::select(longitude, latitude, 1:19)
 
-# adding lat/long back in
-occ_extract_future_final$latitude <- occs.xy$latitude
-occ_extract_future_final$longitude <- occs.xy$longitude
-
-# save csvs
+# save csv
 write_csv(occ_extract_future_final, "lion_future_SWD.csv")
 
 ```
