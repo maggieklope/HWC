@@ -28,13 +28,13 @@ library(spData)
 ```{r}
 
 # can use occ_data function for GBIF
-results <- occ_data(scientificName = "Panthera leo", 
-                      hasCoordinate = TRUE, 
-                      continent = "Africa")
-
-results_lion <- results$data %>% 
-  rename(latitude = decimalLatitude) %>% 
-  rename(longitude = decimalLongitude)
+# results <- occ_data(scientificName = "Panthera leo", 
+#                       hasCoordinate = TRUE, 
+#                       continent = "Africa")
+# 
+# results_lion <- results$data %>% 
+#   rename(latitude = decimalLatitude) %>% 
+#   rename(longitude = decimalLongitude)
 
 # or can use occ() function for more sources
 results <- spocc::occ(
@@ -42,10 +42,9 @@ results <- spocc::occ(
   from = "gbif", 
   limit = 1000,
   has_coords = TRUE)
-
 results_lion <- results[["gbif"]]$data[[formatSpName("Panthera leo")]]
 
-# select just coordinates
+# select just the coordinates
 myspecies_coords <- results_lion%>%
   dplyr::select(longitude, latitude, occurrenceStatus, coordinateUncertaintyInMeters, institutionCode, references) %>%
   filter(occurrenceStatus == "PRESENT")
@@ -98,7 +97,6 @@ africa_2 <- st_union(africa)
 
 # convert to a spatial polygon
 africa_spatial <- as_Spatial(africa_2, cast = TRUE)
-
 
 # creates new data frame with observation data lat/long points
 occs.xy <- occs[c('longitude', 'latitude')]
