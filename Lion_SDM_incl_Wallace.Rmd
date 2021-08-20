@@ -40,7 +40,7 @@ lion <- read_csv("Panthera_leo_original_gbif.csv")
 
 Record of analysis for *Panthera leo*.
 
-### Getting coordinates
+### 1) Getting coordinates
 ```{r}
 # get the columns that matter for mapping and cleaning the occurrence data:
 myspecies_coords <- lion %>% 
@@ -51,22 +51,25 @@ head(myspecies_coords) # 7461 records
 
 ```
 
+### 2) Clean Data
 ```{r}
 # remove rows with duplicate coordinates
 occs.dups <- duplicated(myspecies_coords[c('longitude', 'latitude')])
 occs <- myspecies_coords[!occs.dups,] #4466 obs
+
 # make sure latitude and longitude are numeric (sometimes they are characters)
 occs$latitude <- as.numeric(occs$latitude)
 occs$longitude <- as.numeric(occs$longitude)
+
 # give all records a unique ID
 occs$occID <- row.names(occs)
 
-#cleaning data
+# removing unlikely, impresise, incommplete, and impossible coordinates
 occs <- coord_incomplete(coord_imprecise(coord_impossible(coord_unlikely(occs))))
 # 4444 obs
 ```
 
-### Process Occurrence Data
+### 3) Process Occurrence Data
 
 The following code recreates the polygon used to select occurrences to
 keep in the analysis.
@@ -94,9 +97,10 @@ occs.xy <- occs[c('longitude', 'latitude')] %>%
   drop_na() #NA values need to be removed for the following function
 sp::coordinates(occs.xy) <- ~ longitude + latitude
 
-# sp::over(x, y) -> x = "SpatialPoints", y = "SpatialPolygons"
-# returns a numeric vector of length equal to the number of points; the number is the index (number) of the polygon of y in which a point falls; NA denotes the point does not fall in a polygon; if a point falls in multiple polygons, the last polygon is recorded.
+# overlay occurrence points over the polygon
 intersect <- sp::over(occs.xy, selPoly)
+
+# removes na values, so selects for points where they overlap the focal polygon
 intersect.rowNums <- as.numeric(which(!(is.na(intersect))))
 occs <- occs[intersect.rowNums, ] #4271 obs
 
@@ -130,6 +134,8 @@ points(occs_crop$longitude, occs_crop$latitude, col='red', cex=0.75)
 occs_crop <- as.data.frame(occs_crop)
 ```
 
+### 4) Spatial Thin
+
 Spatial thinning selected. Thin distance selected is 10 km.
 
 ```{r}
@@ -145,20 +151,17 @@ localities we proceed with.
 ```{r}
 # find the iteration that returns the max number of occurrences
 maxThin <- which(sapply(output, nrow) == max(sapply(output, nrow)))
+
 # if there's more than one max, pick the first one
-maxThin <- output[[ifelse(length(maxThin) > 1, maxThin[1], maxThin)]]  
+maxThin <- output[[ifelse(length(maxThin) > 1, maxThin[1], maxThin)]] 
+
 # subset occs to match only thinned occs
-occs <- occs[as.numeric(rownames(maxThin)),]  
-#1308 obs
+occs_crop <- occs_crop[as.numeric(rownames(maxThin)),]  
+#1273 obs
 ```
 
-### Cleaning data 
-```{r}
-occs <- coord_incomplete(coord_imprecise(coord_impossible(coord_unlikely(occs))))
-# 1294 obs
-```
 
-### Obtain Environmental Data
+### 5) Obtain Environmental Data
 
 Using WorldClim
 (<a href="http://www.worldclim.org/" class="uri">http://www.worldclim.org/</a>)
@@ -169,49 +172,42 @@ bioclimatic dataset at resolution of 2.5 arcmin.
 clim_data <- getData("worldclim", var="bio", res=2.5)
 
 # extract environmental values at occ grid cells
-locs.vals <- raster::extract(clim_data[[1]], occs[, c('longitude', 'latitude')])
+locs.vals <- raster::extract(clim_data[[1]], occs_crop[, c('longitude', 'latitude')])
+
 # remove occs without environmental values
-occs <- occs[!is.na(locs.vals), ]  
-#1293 obs
+occs_crop <- occs_crop[!is.na(locs.vals), ]  
+#1270 obs
+
+# crop to extent of Africa spatial polygon
+envsCrop <- raster::crop(clim_data, selPoly)
 ```
 
-### Process Environmental Data
-
-Background selection technique chosen as Point Buffers.
+### 6) Process Environmental Data
 
 ```{r}
-# make SpatialPoints object for buffering
-occs.xy <- occs[c('longitude', 'latitude')]
+# make SpatialPoints object for to create point buffer
+occs.xy <- occs_crop[c('longitude', 'latitude')]
 sp::coordinates(occs.xy) <- ~ longitude + latitude
-bgExt <- occs.xy
-```
 
-Buffer size of the study extent polygon defined as 0.5 degrees.
+#Buffer size of the study extent polygon defined as 0.5 degrees.
+bgExt <- rgeos::gBuffer(occs.xy, width = 0.5)
 
-```{r}
-bgExt <- rgeos::gBuffer(bgExt, width = 0.5)
-```
-
-Mask environmental variables by , and take a random sample of background
-values from the study extent. As the sample is random, your results may
-be different than those in the session. If there seems to be too much
-variability in these background samples, try increasing the number from
-10,000 to something higher (e.g. 50,000 or 100,000). The better your
-background sample, the less variability you’ll have between runs.
-
-```{r}
 # crop the environmental rasters by the background extent shape
-envsBgCrop <- raster::crop(envs, bgExt)
+envsBgCrop <- raster::crop(clim_data, bgExt)
+
 # mask the background extent shape from the cropped raster
 envsBgMsk <- raster::mask(envsBgCrop, bgExt)
+
 # sample random background points
-bg.xy <- dismo::randomPoints(envsBgMsk, )
+set.seed(0)
+bg.xy <- dismo::randomPoints(envsBgMsk, 10000)
+
 # convert matrix output to data frame
 bg.xy <- as.data.frame(bg.xy)  
 colnames(bg.xy) <- c("longitude", "latitude")
 ```
 
-### Partition Occurrence Data
+### 7) Partition Occurrence Data
 
 Occurrence data is now partitioned for cross-validation, a method that
 iteratively builds a model on all but one group and evaluates that model
@@ -222,27 +218,73 @@ model is first built with groups A and B and is evaluated on C. This is
 repeated by building a model with B and C and evaluating on A, and so on
 until all combinations are done.
 
-Cross-validation operates under the assumption that the groups are
-independent of each other, which may or may not be a safe assumption for
-your dataset. Spatial partitioning is one way to ensure more
-independence between groups.
-
-You selected to partition your occurrence data by the method.
-
 ```{r}
-occs.xy <- occs[c('longitude', 'latitude')]
+# need just lat/long values in two columns 
+occs.xy <- occs_crop[c('longitude', 'latitude')]
+
+# partition data by lat/long into four bins of ~equal numbers
 group.data <- ENMeval::get.block(occ = occs.xy, bg = bg.xy)
-```
 
-```{r}
 # pull out the occurrence and background partition group numbers from the list
 occs.grp <- group.data[[1]]
 bg.grp <- group.data[[2]]
+
+#Visualize spatial partition
+evalplot.grps(pts = occs.xy, pts.grp = group.data$occs.grp, envs = envsCrop)+ 
+        ggplot2::ggtitle("Spatial block partitions: occurrences")
 ```
 
-### Build and Evaluate Niche Model
+### Extract data for Maxent GUI
 
-You selected the maxent model.
+```{r}
+# extracting values
+occ_extract <- raster::extract(envsCrop, occs.xy)
+bg_extract <- raster::extract(envsCrop, bg.xy)
+
+# creating data frame
+occ_extract <- as.data.frame(occ_extract)
+bg_extract <- as.data.frame(bg_extract)
+
+# Creating data frame with species name, coordinates, and bioclim data 
+lion_SWD <- data.frame(cbind(Species = "Panthera leo", occs_crop[2:3], occ_extract)) 
+bg_SWD <- data.frame(cbind(Species = "background", bg.xy, bg_extract)) 
+
+# export samples with data files
+#write.csv(lion_SWD, "lion_SWD.csv", row.names = F)
+#write.csv(bg_SWD, "bg_SWD.csv", row.names = F)
+
+#Download predicted climate rasters
+envsFuture <- raster::getData("CMIP5", var = "bio", res = 2.5, rcp = 85, model = "AC", year = 70)
+
+# need names to match up to our preset-time climate data
+names(envsFuture) <- names(clim_data)
+
+# cropping to Africa polygon (not sure if we really need to, but might make it go faster)
+envsFuture_crop <- raster::crop(envsFuture, selPoly)
+
+# extracting values
+occ_future_extract <- raster::extract(envsFuture_crop, occs.xy)
+
+# save as data frame and add lat/long + species
+occ_future_extract <- as.data.frame(occ_future_extract) 
+occ_future_extract <- data.frame(cbind(Species = "Panthera leo", occs_crop[2:3], occ_future_extract))
+
+
+# save csv
+write.csv(occ_future_extract, "lion_future_SWD.csv", row.names = F)# extracting values
+occ_future_extract <- raster::extract(future_data_crop, occs.xy)
+
+# saving as data frame, add long/lat back in, re-order
+occ_extract_future_final <- as.data.frame(occ_extract) %>% 
+  mutate(latitude = occs.xy$latitude) %>% 
+  mutate(longitude = occs.xy$longitude) %>% 
+  dplyr::select(longitude, latitude, 1:19)
+# save csv
+write_csv(occ_extract_future_final, "lion_future_SWD.csv")
+```
+
+
+### 8) Build and Evaluate Niche Model
 
 ```{r}
 # define the vector of regularization multipliers to test
@@ -258,7 +300,35 @@ evalTbl <- e@results
 evalMods <- e@models
 names(evalMods) <- e@tune.settings$tune.args
 evalPreds <- e@predictions
+
+# compare a wider range of models that can use a wider variety of feature classes and regularization multipliers
+e.mx <- ENMevaluate(occs = occs.xy, envs = envsBgMsk, bg.coords = bg.xy, method = 'user', 
+                          occ.grp = occs.grp, bg.grp = bg.grp,
+                    algorithm = 'maxnet', partitions = 'block', 
+                    tune.args = list(fc = c("L","LQ","LQH","H"), rm = 1:5))
+
+# unpack the results data frame, the list of models, and the RasterStack of raw predictions
+eval.mxTbl <- e.mx@results
+
+# overall results
+res <- eval.results(e.mx)
+
+# select model with lowest AICc score
+opt.aicc <- res %>% filter(delta.AICc == 0)
+#fc.H_rm.1
+
+opt.seq <- res %>% 
+  filter(or.10p.avg == min(or.10p.avg)) %>% 
+  filter(auc.val.avg == max(auc.val.avg))
+
+mod.seq <- eval.models(e.mx)[[opt.seq$tune.args]]
+# Here are the non-zero coefficients in our model.
+mod.seq$betas
+
+plot(mod.seq, type = "cloglog")
+
 ```
+
 
 ```{r}
 # view response curves for environmental variables with non-zero coefficients
@@ -267,12 +337,12 @@ plot(evalMods[["rm.1_fc.L"]], vars = c('bio03', 'bio04', 'bio05', 'bio06', 'bio0
 
 ```{r}
 # view ENMeval results
-ENMeval::evalplot.stats(e, stats = "auc.val", "rm", "fc")
+ENMeval::evalplot.stats(e.mx, stats = "auc.val", "rm", "fc")
 ```
 
 ```{r}
 # Select your model from the models list
-mod <- evalMods[["rm.1_fc.L"]]
+mod <- e.mx[["fc.H_rm.1"]]
 ```
 
 ```{r}
