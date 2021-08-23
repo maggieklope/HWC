@@ -189,8 +189,8 @@ envsCrop <- raster::crop(clim_data, selPoly)
 occs.xy <- occs_crop[c('longitude', 'latitude')]
 sp::coordinates(occs.xy) <- ~ longitude + latitude
 
-#Buffer size of the study extent polygon defined as 0.5 degrees.
-bgExt <- rgeos::gBuffer(occs.xy, width = 0.5)
+# create point buffers of 50 km
+bgExt <- circles(occs, d = 50000, lonlat = TRUE)
 
 # crop the environmental rasters by the background extent shape
 envsBgCrop <- raster::crop(clim_data, bgExt)
@@ -250,8 +250,8 @@ lion_SWD <- data.frame(cbind(Species = "Panthera leo", occs_crop[2:3], occ_extra
 bg_SWD <- data.frame(cbind(Species = "background", bg.xy, bg_extract)) 
 
 # export samples with data files
-#write.csv(lion_SWD, "lion_SWD.csv", row.names = F)
-#write.csv(bg_SWD, "bg_SWD.csv", row.names = F)
+#write.csv(lion_SWD, "maxent_SWD/lion_SWD.csv", row.names = F)
+#write.csv(bg_SWD, "maxent_SWD/bg_SWD.csv", row.names = F)
 
 #Download predicted climate rasters
 envsFuture <- raster::getData("CMIP5", var = "bio", res = 2.5, rcp = 85, model = "AC", year = 70)
@@ -271,7 +271,7 @@ occ_future_extract <- data.frame(cbind(Species = "Panthera leo", occs_crop[2:3],
 
 
 # save csv
-write.csv(occ_future_extract, "lion_future_SWD.csv", row.names = F)# extracting values
+write.csv(occ_future_extract, "maxent_SWD/lion_future_SWD.csv", row.names = F)# extracting values
 occ_future_extract <- raster::extract(future_data_crop, occs.xy)
 
 # saving as data frame, add long/lat back in, re-order
@@ -280,8 +280,33 @@ occ_extract_future_final <- as.data.frame(occ_extract) %>%
   mutate(longitude = occs.xy$longitude) %>% 
   dplyr::select(longitude, latitude, 1:19)
 # save csv
-write_csv(occ_extract_future_final, "lion_future_SWD.csv")
+write_csv(occ_extract_future_final, "maxent_SWD/lion_future_SWD.csv")
 ```
+
+### Changing background info
+
+```{r}
+# create function for steps required to extract background points
+bg_points<- function(var){        
+        exbg.xy <- dismo::randomPoints(envsBgMsk, var) #create random points
+        exbg.xy <- as.data.frame(exbg.xy) #convert to dataframe
+        colnames(exbg.xy) <- c("longitude", "latitude") 
+        exbg_extract <- raster::extract(envsCrop, exbg.xy) # extract climate data
+        exbg_extract <- as.data.frame(exbg_extract) 
+        exbg_SWD <- data.frame(cbind(Species = "background", exbg.xy, exbg_extract))
+        #write csv
+        write.csv(exbg_SWD, file = paste0("maxent_SWD/exbg_SWD", var, ".csv"), row.names = F)
+        
+        return(exbg_SWD)
+        
+}
+
+vals <- c(750, 1000, 5000, 10000)
+df_list <- lapply(vals, bg_points)
+
+```
+
+
 
 
 ### 8) Build and Evaluate Niche Model
