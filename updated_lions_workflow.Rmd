@@ -21,6 +21,10 @@ library(spocc)
 library(sf)
 library(rgdal)
 library(spData)
+
+# load Wallace functions
+source(system.file('shiny/funcs', 'functions.R', package = 'wallace'))
+
 ```
 
 ### 1) Download species occurence data and get coordinates
@@ -84,6 +88,7 @@ lion_cleaned <- coord_incomplete(coord_imprecise(coord_impossible(coord_unlikely
 
 ```{r}
 # load world data from spData package
+world_sp = as(world, "Spatial")
 world_sf = st_as_sf(world_sp, "sf")
 
 # filter to just Africa (removing Madagascar for now)
@@ -120,6 +125,7 @@ intersect.rowNums <- as.numeric(which(!(is.na(intersect))))
 occs <- occs[intersect.rowNums, ]
 occs$name <- "Pantheria leo"
 
+
 ```
 
 ### 3) Spatial thin
@@ -140,7 +146,12 @@ maxThin <- which(sapply(output, nrow) == max(sapply(output, nrow)))
 maxThin <- output[[ifelse(length(maxThin) > 1, maxThin[1], maxThin)]]  
 
 # subset occs to match only thinned occs
-occs <- occs[as.numeric(rownames(maxThin)),]  
+occs <- occs[as.numeric(rownames(maxThin)),]0
+
+# save occs to upload to Wallace
+occs_wallace <- occs %>% 
+  dplyr::select(name, longitude, latitude) # change order to match
+write_csv(occs_wallace, "thinned_data_for_Wallace.csv")
 
 ```
 
@@ -228,20 +239,65 @@ future_data_crop <- raster::crop(future_data, africa_spatial)
 ### 8) Extracting predicted climate variables
 
 - Do we only need to do the occurrence points?
-- does it need the long/lat again?
+- does it need the long/lat again? Or does it want x/y?
 
 ```{r}
 # extracting values
 occ_future_extract <- raster::extract(future_data_crop, occs.xy)
 
 # saving as data frame, add long/lat back in, re-order
-occ_extract_future_final <- as.data.frame(occ_extract) %>% 
-  mutate(latitude = occs.xy$latitude) %>% 
-  mutate(longitude = occs.xy$longitude) %>% 
-  dplyr::select(longitude, latitude, 1:19)
+occ_extract_future_final <- as.data.frame(occ_extract) 
+# %>% 
+  # mutate(latitude = occs.xy$latitude) %>% 
+  # mutate(longitude = occs.xy$longitude) %>% 
+  # dplyr::select(longitude, latitude, 1:19)
 
 # save csv
 write_csv(occ_extract_future_final, "lion_future_SWD.csv")
 
 ```
+
+At this point, the SWD data files can be used to make prediction in the Maxent GUI, or used for modeling in R
+
+### 9) Maxent GUI results in R
+
+```{r}
+
+
+```
+
+
+### 10) SDM modeling in R
+
+```{r}
+library(dismo)
+install.packages("rJava")
+library(rJava)
+
+# withhold 20% of the data for testing the model
+fold <- kfold(occ_extract_final, k = 5) # making 5 groups
+lion_test <- occ_extract_final[fold == 1, ]
+lion_train <- occ_extract_final[fold != 1, ]
+
+# making x argument
+predictions <- occ_extract_final %>% 
+  dplyr::select(bio01:bio19)
+
+# making p argument (just lat/long, )
+occurrence <- occ_extract_final %>% 
+  dplyr::select(longitude, latitude)
+
+occurrence <- as.vector(occurrence)
+
+# making a argument
+# background <- 
+
+#fit the maxent model
+lion.model <- maxent(x = predictions, 
+                     p = occurrence
+                     )
+
+
+```
+
 
