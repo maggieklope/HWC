@@ -1,17 +1,19 @@
 
 # =============================================================================
 # Name:           livestock_rasters.R
-# Description:    takes an SDM prediction raster and an FAO livestock abundance raster and transforms them to the same resolution.  Also outlines how to filter livestock abundance by a threshold.
 # 
-# Inputs:         monitoring.csv
-#                 point_check.csv
+# Author:         Maggie Klope (mmklope@ucsb.edu)
+# 
+# Description:    Script that akes an SDM prediction raster and an FAO livestock abundance raster and transforms them to the same resolution.  Also outlines how to filter livestock abundance by a threshold.
+# 
+# Inputs:         species abundance raster (we used a .grd file from an example run with Wallace)
+#                 livestock abundance raster from http://www.fao.org/livestock-systems/global-distributions/en/
 
-# Outputs:        labels_mk.csv
+# Outputs:        
 # 
 # Notes:          - 
 #                 - 
 # =============================================================================
-
 
 # load packages -----------------------------------------------------------
 library(raster)
