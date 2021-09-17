@@ -34,6 +34,7 @@ Bioclim_correlation.RMD: script lookin at the correlation between bioclim variab
 ## Past Contributors
 
 Maggie Klope (mmklop@ucsb.edu)
-Mika Leslie (mleslie@ucsb.edu
+
+Mika Leslie (mleslie@ucsb.edu)
 
 If you have questions, you can email us or contact us via Slack
