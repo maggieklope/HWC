@@ -2,7 +2,7 @@
 
 ## Repo Files
 
-Datasets:
+livestock_datasets: 
 
 africa_shapefile:
 
@@ -10,11 +10,11 @@ wallace_prediction_rasters
 
 GBIF_Lion.csv
 
-SWD.RMD: R Markdown file that outlines the creation of species with data (SWD) for use with the Maxent GUI
+SWD.Rmd: R Markdown file that outlines the creation of species with data (SWD) for use with the Maxent GUI
 
-Livestock.RMD: information on using livestock rasters from the [insert link here]
+Livestock.Rmd: information on using livestock rasters from the [insert link here]
 
-Bioclim_correlation.RMD: script lookin at the correlation between bioclim variables
+Bioclim_correlation.Rmd: script looking at the correlation between bioclim variables
 
 ## Project Links
 [Project Background Notes](https://docs.google.com/document/d/1ra-ZNB6CdaiyI0D5DSjjCjhgxTDMzOY4mdLgj1ppPa4/edit?usp=sharing)
@@ -28,8 +28,6 @@ Bioclim_correlation.RMD: script lookin at the correlation between bioclim variab
 [Zotero Group](https://www.zotero.org/groups/4371798/arnhold-hwc)
 
 - The Zotero group is currently under Maggie's account, but she can transfer ownership to whoever would be best
-
-## Useful Links
 
 ## Past Contributors
 
