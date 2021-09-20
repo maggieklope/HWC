@@ -29,6 +29,8 @@
 
 ## Next Steps:
 
+- - Determine best method for creating background points
+- 
 - Determine correlation between bioclim variables
 
 - Find best method for creation of a bias layer
