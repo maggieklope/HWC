@@ -4,13 +4,13 @@
 
 **Maxent_GUI:** R Markdown file that outlines the creation of data for use with the Maxent GUI.  It outlines ways to download and clean occurrence data, thin the data, create background points, and created data for both Species with Data (SWD) and with lat/long and climate polygons. Also includes some code for downloading future climate data and land cover data.
 
-**africa_shapefile:** Africa shapefile for clipping polygons downloaded from https://open.africa/dataset/africa-shapefiles
+**africa_shapefile:** Africa shapefile for clipping polygons downloaded from [this site](https://open.africa/dataset/africa-shapefiles)
 
 **GBIF_Lion.csv:** Records as downloaded directly from GBIF
 
-**Livestock.Rmd:** information on using livestock rasters from the [insert link here]
+**Livestock.Rmd:** information on using livestock rasters
 
-**livestock_datasets:** Contains gridded livestock data from http://www.fao.org/land-water/land/land-governance/land-resources-planning-toolbox/category/details/en/c/1236449/
+**livestock_datasets:** Contains gridded livestock data [from fao](http://www.fao.org/land-water/land/land-governance/land-resources-planning-toolbox/category/details/en/c/1236449/)
 
 **wallace_prediction_rasters:** Example rasters from a run in Wallace for testing. This is from very early on, so shouldn't be interpreted as any meaningful resutls.
 
