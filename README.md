@@ -2,19 +2,19 @@
 
 ## Repo Files
 
-livestock_datasets: Contains gridded livestock data from: http://www.fao.org/land-water/land/land-governance/land-resources-planning-toolbox/category/details/en/c/1236449/
+**livestock_datasets:** Contains gridded livestock data from http://www.fao.org/land-water/land/land-governance/land-resources-planning-toolbox/category/details/en/c/1236449/
 
-africa_shapefile: Africa shapefile for clipping polygons downloaded from: https://open.africa/dataset/africa-shapefiles
+**africa_shapefile:** Africa shapefile for clipping polygons downloaded from https://open.africa/dataset/africa-shapefiles
 
-wallace_prediction_rasters
+**wallace_prediction_rasters**
 
-GBIF_Lion.csv
+**GBIF_Lion.csv**
 
-Maxent_GUI: R Markdown file that outlines the creation of data for use with the Maxent GUI.  It outlines ways to download and clean occurrence data, thin the data, create background points, and created data for both Species with Data (SWD) and with lat/long and cliamte polygons.
+**Maxent_GUI:** R Markdown file that outlines the creation of data for use with the Maxent GUI.  It outlines ways to download and clean occurrence data, thin the data, create background points, and created data for both Species with Data (SWD) and with lat/long and cliamte polygons.
 
-Livestock.Rmd: information on using livestock rasters from the [insert link here]
+**Livestock.Rmd:** information on using livestock rasters from the [insert link here]
 
-Bioclim_correlation.Rmd: script looking at the correlation between bioclim variables
+**Bioclim_correlation.Rmd:** script looking at the correlation between bioclim variables
 
 ## Project Links
 [Project Background Notes](https://docs.google.com/document/d/1ra-ZNB6CdaiyI0D5DSjjCjhgxTDMzOY4mdLgj1ppPa4/edit?usp=sharing)
