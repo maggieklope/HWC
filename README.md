@@ -2,7 +2,7 @@
 
 ## Repo Files
 
-**Maxent_GUI:** R Markdown file that outlines the creation of data for use with the Maxent GUI.  It outlines ways to download and clean occurrence data, thin the data, create background points, and created data for both Species with Data (SWD) and with lat/long and climate polygons.
+**Maxent_GUI:** R Markdown file that outlines the creation of data for use with the Maxent GUI.  It outlines ways to download and clean occurrence data, thin the data, create background points, and created data for both Species with Data (SWD) and with lat/long and climate polygons. Also includes some code for downloading future climate data and land cover data.
 
 **africa_shapefile:** Africa shapefile for clipping polygons downloaded from https://open.africa/dataset/africa-shapefiles
 
