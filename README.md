@@ -14,6 +14,8 @@
 
 **wallace_prediction_rasters:** Example rasters from a run in Wallace for testing. This is from very early on, so shouldn't be interpreted as any meaningful resutls.
 
+**Block_CV_example.R:** Walks through the example code for the Block CV package. Includes different methods for spatial blocking, buffers, spatial autocorrelation, and a basic maxent model.
+
 ## Project Links
 [Project Background Notes](https://docs.google.com/document/d/1ra-ZNB6CdaiyI0D5DSjjCjhgxTDMzOY4mdLgj1ppPa4/edit?usp=sharing)
 
