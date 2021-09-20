@@ -10,7 +10,7 @@
 
 **Livestock.Rmd:** information on using livestock rasters
 
-**livestock_datasets:** Contains gridded livestock data [from fao](http://www.fao.org/land-water/land/land-governance/land-resources-planning-toolbox/category/details/en/c/1236449/)
+**livestock_datasets:** Contains gridded livestock data from [FOA](http://www.fao.org/land-water/land/land-governance/land-resources-planning-toolbox/category/details/en/c/1236449/)
 
 **wallace_prediction_rasters:** Example rasters from a run in Wallace for testing. This is from very early on, so shouldn't be interpreted as any meaningful resutls.
 
