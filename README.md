@@ -27,6 +27,12 @@
 
 - The Zotero group is currently under Maggie's account, but she can transfer ownership to whoever would be best
 
+## Next Steps:
+
+- Determine correlation between bioclim variables
+
+- Find best method for creation of a bias layer
+
 ## Past Contributors
 
 Maggie Klope (mmklope@ucsb.edu)
