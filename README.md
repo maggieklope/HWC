@@ -6,7 +6,7 @@
 
 **africa_shapefile:** Africa shapefile for clipping polygons downloaded from https://open.africa/dataset/africa-shapefiles
 
-**GBIF_Lion.csv**
+**GBIF_Lion.csv:** Records as downloaded directly from GBIF
 
 **Livestock.Rmd:** information on using livestock rasters from the [insert link here]
 
